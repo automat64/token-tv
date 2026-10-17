@@ -15,7 +15,7 @@ from pathlib import Path
 from token_tv import __version__
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from token_tv.usage import normalize_claude, normalize_codex, normalize_codexbar, normalize_grok, timestamp, window
 from token_tv.display import STYLES
@@ -164,8 +164,17 @@ def check_codexbar(account):
         raise ValueError("codexbar_source is one of " + ", ".join(sorted(CODEXBAR_SOURCES)) + " and only for codexbar_command")
 
 
+class NoAuthRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Returning None makes urllib raise HTTPError without forwarding credentials.
+        return None
+
+
 def json_get(url, headers=None):
-    with urlopen(Request(url, headers=headers or {}), timeout=20) as response:
+    request = Request(url, headers=headers or {})
+    authenticated = any(key.lower() == 'authorization' for key in (headers or {}))
+    open_url = build_opener(NoAuthRedirects()).open if authenticated else urlopen
+    with open_url(request, timeout=20) as response:
         return json.load(response)
 
 

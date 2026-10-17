@@ -10,17 +10,15 @@ iPhone and Apple Watch shows one value from it. No TokenTV app, no extra login o
   number, window and OLD / NO DATA state the clock shows.
 - Not checked yet: a real Apple Watch, and which complication apps accept a plain `http://` address.
 
-## 1. Let the phone reach the computer
+## 1. Arrange authenticated access to the computer
 
-TokenTV listens on `127.0.0.1` unless you tell it otherwise. Start it on your home network address:
+This fork only permits loopback dashboard bindings. Direct LAN access, including
+`token-tv run --host 0.0.0.0`, is rejected because the dashboard has no user authentication.
+The physical desk clock still works over the LAN; this restriction affects the web dashboard.
 
-```bash
-token-tv run --host 0.0.0.0        # or the computer's LAN IP, e.g. --host 192.168.0.20
-```
-
-On the iPhone, on the same Wi-Fi, open `http://<computer-ip>:8787/watch.json` in Safari. You should
-see JSON like the sample below. Anyone on that network can also open the dashboard and switch the
-clock face, so do not forward this port to the internet.
+Phone/watch access requires a separately configured authenticated tunnel or gateway. No such
+integration has been verified, so the steps below are a payload reference, not a working direct-LAN
+setup. Do not publish the unauthenticated dashboard to make it reachable.
 
 ## 2. Add the complication
 
@@ -28,7 +26,7 @@ Install a free app that turns a JSON URL into a complication, for example
 [Complicator](https://apps.apple.com/us/app/-/id6758154567) or
 [ComplicaJSON](https://www.complicajson.com/). Add a data source with:
 
-- URL: `http://<computer-ip>:8787/watch.json`
+- URL: the `/watch.json` endpoint through your authenticated access mechanism
 - JSON path: `accounts.claude_a.used_percent` (a number), `accounts.claude_a.used` (0–1, for a
   gauge) or `accounts.claude_a.text` (`44% WK`)
 
@@ -67,7 +65,6 @@ Config keys are not included.
 
 ## Away from home
 
-The watch can only reach the address while it is on the same network as the computer. TokenTV does
-not upload your usage anywhere. If you want the number outside, put the computer and the phone on a
-private network you already trust (a VPN such as Tailscale) and use that address; this has not been
-checked with a watch yet.
+TokenTV does not upload your usage to a watch service. A VPN alone does not make the loopback
+listener reachable; remote use still needs an authenticated access mechanism compatible with the
+complication app. This has not been checked with a watch.

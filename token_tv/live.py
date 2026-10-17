@@ -5,7 +5,7 @@ import json
 import os
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -15,6 +15,7 @@ from token_tv.display import STYLES, render_page, watch_payload
 from token_tv.web_assets import HTML, ASSETS, asset
 from token_tv.sources import load_config
 from token_tv.state import UsageStore
+from token_tv.http_server import LocalHTTPServer, loopback_host, trusted_request
 
 
 def write_json(path, data):
@@ -81,6 +82,20 @@ def handler(store, preferences=None):
         def log_message(self, *args):
             return
 
+        def parse_request(self):
+            if not super().parse_request():
+                return False
+            if not trusted_request(self):
+                self.send_error(403, 'Untrusted dashboard request')
+                return False
+            return True
+
+        def end_headers(self):
+            self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
+            self.send_header('X-Frame-Options', 'DENY')
+            self.send_header('Cross-Origin-Resource-Policy', 'same-origin')
+            super().end_headers()
+
         def do_GET(self):
             url = urlparse(self.path)
             path = url.path
@@ -133,11 +148,9 @@ def handler(store, preferences=None):
             if preferences is None:
                 self.send_error(409, 'Display settings unavailable')
                 return
-            origin = self.headers.get('Origin')
-            if origin and (urlparse(origin).scheme not in ('http', 'https') or urlparse(origin).netloc != self.headers.get('Host')):
-                self.send_error(403, 'Origin mismatch')
-                return
             try:
+                if len(self.headers.get_all('Content-Length', [])) != 1 or 'Transfer-Encoding' in self.headers:
+                    raise ValueError('Ambiguous request body')
                 length = int(self.headers.get('Content-Length', '0'))
                 if not 0 < length <= 1024 or self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                     raise ValueError('Invalid JSON request')
@@ -147,6 +160,9 @@ def handler(store, preferences=None):
                 preferences.set_style(data['style'])
             except (ValueError, UnicodeError):
                 self.send_error(400, 'Choose a supported display style')
+                return
+            except TimeoutError:
+                self.send_error(408, 'Request timed out')
                 return
             except OSError:
                 self.send_error(500, 'Could not save display choice')
@@ -158,7 +174,8 @@ def handler(store, preferences=None):
 def main():
     parser = argparse.ArgumentParser(description="TokenTV live account display")
     parser.add_argument("--config", required=True, help="Credential-free account metadata")
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default="127.0.0.1", type=loopback_host,
+                        help="loopback IP or localhost; remote access requires an SSH tunnel")
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--output", help="Write a normalized snapshot rather than stdout")
@@ -250,7 +267,7 @@ def main():
     thread = threading.Thread(target=poll, daemon=True)
     thread.start()
     try:
-        with ThreadingHTTPServer((args.host, args.port), handler(store, preferences)) as server:
+        with LocalHTTPServer((args.host, args.port), handler(store, preferences)) as server:
             print(f"TokenTV live listening at http://{args.host}:{args.port}", flush=True)
             server.serve_forever()
     except KeyboardInterrupt:

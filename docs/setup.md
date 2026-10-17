@@ -17,6 +17,22 @@ token-tv run                                      # dashboard at http://127.0.0.
 `uvx token-tv demo` (uv) or `npx token-tv demo` (Node) runs it without installing. From a clone,
 `pip install .` gives the same `token-tv` command.
 
+The live dashboard is local-only: `--host` accepts `localhost` or a loopback IP, and requests
+must use that address (or `localhost`) with the listener's port. LAN and wildcard bindings are
+rejected before reading accounts or contacting the clock. To view it from another computer,
+forward the port with `ssh -N -L 8787:127.0.0.1:8787 user@token-tv-host`, then open
+`http://127.0.0.1:8787` on that computer. Do not expose the port through a public proxy; the
+dashboard has no user authentication and trusts local clients and authorized tunnel users.
+The physical clock remains reachable over your LAN independently of the dashboard binding.
+
+Browser requests with untrusted hostnames or origins are rejected. The server allows up to
+16 active connections, with a 5-second socket timeout and a 30-second connection deadline.
+Authenticated provider requests reject redirects instead of forwarding credentials; a provider
+redirect appears as a failed reading. Credential-free CodexBar URLs may still redirect.
+
+With a clock configured, `start` and `run` upload the selected face automatically on startup.
+**Apply to clock** changes the face; it is not an initial authorization step.
+
 <p align="center"><img src="images/usage-examples.png" alt="Digital face at low, busy and near-limit usage (sample data)"></p>
 
 <details>

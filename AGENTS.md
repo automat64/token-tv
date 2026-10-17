@@ -19,7 +19,8 @@ When the user says "Set up TokenTV for me":
 2. Ask the user for the clock's IP address (shown on the clock's screen).
 3. Run `.venv/bin/token-tv start --device-url <ip>`. It finds the Claude, Codex and Grok CLIs that are already
    signed in, reads each account's email through the official login, asks the user to confirm, saves the
-   config and opens the dashboard at http://127.0.0.1:8787. The user then presses Clock display → Apply.
+   config and opens the dashboard at http://127.0.0.1:8787. With a clock configured, it uploads the
+   selected face immediately. Clock display → Apply changes the face after startup.
 4. If it says nothing is signed in, tell the user to sign in to the CLI they use (e.g. `claude`, then /login)
    and run step 3 again. A second account of the same service: `.venv/bin/token-tv connect --account <key>`.
 
