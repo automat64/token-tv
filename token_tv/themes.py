@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from token_tv.display import (
-    PROVIDER_INK, account_label, mascot, overview_rows, reading, row_shift,
+    PROVIDER_INK, account_label, balance_panel, mascot, overview_rows, reading, row_shift,
 )
 
 WEB = Path(__file__).with_name('web')
@@ -304,6 +304,9 @@ def render_digital(snapshot):
     rows = overview_rows(snapshot)
     for index, row in enumerate(rows):
         y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+        if row['provider'] == 'deepseek':
+            balance_panel(cv.ink, row, y, '#03100b', mint, line)
+            continue
         used, period, old, reset = reading(row)
         cv.back.rectangle((4, y, 235, y + ROW_H - 1), fill='#03100b', outline=line)
         cv.back.line((5, y + 25, 234, y + 25), fill='#0f3a2c')
@@ -340,6 +343,9 @@ def render_neon(snapshot):
     rows = overview_rows(snapshot)
     for index, row in enumerate(rows):
         y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+        if row['provider'] == 'deepseek':
+            balance_panel(cv.ink, row, y, '#060b20', '#89b9ff', '#497cf5')
+            continue
         a, a2 = ACCENT['neon'][row['provider']]
         used, period, old, reset = reading(row)
         box = (5, y + 1, 234, y + ROW_H - 2)
@@ -429,6 +435,9 @@ def render_retro(snapshot):
     rows = overview_rows(snapshot)
     for index, row in enumerate(rows):
         y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+        if row['provider'] == 'deepseek':
+            balance_panel(cv.ink, row, y, outline_ink, cream, '#74a9ff')
+            continue
         a, a2 = ACCENT['retro'][row['provider']]
         used, period, old, reset = reading(row)
         pixel_scene(cv, row['provider'], y)
@@ -464,6 +473,9 @@ def render_hud(snapshot):
     rows = overview_rows(snapshot)
     for index, row in enumerate(rows):
         y = ROWS[index] + row_shift(len(rows), ROWS[1] - ROWS[0])
+        if row['provider'] == 'deepseek':
+            balance_panel(cv.ink, row, y, '#06101a', '#74a9ff', '#1b3b58')
+            continue
         a, a2 = ACCENT['hud'][row['provider']]
         used, period, old, reset = reading(row)
         cut = 10
@@ -512,6 +524,9 @@ def render_gameboy(data):
     pitch = 79
     for index, row in enumerate(rows):
         y = 3 + index * pitch + row_shift(len(rows), pitch)
+        if row['provider'] == 'deepseek':
+            balance_panel(cv.ink, row, y, GB_LIGHTEST, GB_DARKEST, GB_DARK)
+            continue
         used, period, old, reset = reading(row)  # used is None when nothing was reported
         cv.draw.rectangle((4, y, 235, y + 74), outline=GB_DARKEST, width=2)
         cv.draw.rectangle((7, y + 3, 232, y + 71), outline=GB_DARK, width=1)

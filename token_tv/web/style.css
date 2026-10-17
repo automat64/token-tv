@@ -97,6 +97,17 @@ h1{margin:0;font:600 48px/1.04 var(--font-display);letter-spacing:-.03em;color:v
 .card-shell,.provider-card{--accent:var(--claude);--accent-2:var(--claude-2)}
 .card-shell[data-provider=codex],.provider-card[data-provider=codex]{--accent:var(--codex);--accent-2:var(--codex-2)}
 .card-shell[data-provider=grok],.provider-card[data-provider=grok]{--accent:var(--grok);--accent-2:var(--grok-2)}
+.card-shell[data-provider=deepseek],.provider-card[data-provider=deepseek]{--accent:#74a9ff;--accent-2:#a6cdff}
+.deepseek-mark{font:bold 28px monospace;text-align:center;color:var(--accent)}
+.provider-card[data-provider=deepseek] .balance-amount{font-size:clamp(20px,3.5vw,38px);font-weight:700;line-height:1.3;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.balance-reading{min-width:0}
+.balance-currency{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;padding:12px 0}
+.provider-card .balance-currency .stat{display:grid;gap:6px;padding:0;border:0}
+.provider-card .balance-currency .stat-k{display:block;font-size:10px;letter-spacing:.04em}
+.provider-card .balance-currency .stat::before{display:none}
+.balance-note{font-size:12px;line-height:1.5;color:var(--ink-2);margin:8px 0 16px}
+[data-theme=hud] .provider-card[data-provider=deepseek]{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"head head" "reading timer" "more more" "foot foot"}
+[data-theme=hud] .provider-card .balance-reading{display:flex}
 .provider-card{position:relative;isolation:isolate;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"head head" "reading timer" "gauge gauge" "more more" "foot foot";align-items:center;column-gap:28px;padding:24px 28px 0;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--panel)}
 .card-art{position:absolute;inset:0;z-index:-1;display:none;pointer-events:none}
 .card-art .scene{display:none;position:absolute;inset:0;width:100%;height:100%}

@@ -96,6 +96,9 @@ def setup(args):
                 reuse = ask('  Reuse', 'y').lower().startswith('y')
             accounts.append({'key': key, 'alias': f'{provider.upper()} {letter}', 'provider': provider,
                              'email': email, 'source_home': home if reuse else str(homes / key)})
+    if args.deepseek:
+        accounts.append({'key': 'deepseek_a', 'alias': 'DEEPSEEK A', 'provider': 'deepseek',
+                         'source_home': str(homes / 'deepseek_a')})
     if not accounts:
         print('No accounts given. Pass --claude-email, --codex-email or --grok-email (repeat for B and C), '
               'or run setup in a terminal to be asked.', file=sys.stderr)
@@ -127,6 +130,9 @@ def setup(args):
     flag = '' if str(path) == default_config() else f' --config {path}'
     print(f'Wrote {path} ({len(accounts)} account{"s" * (len(accounts) != 1)}; emails and paths only, no secrets).')
     for account in accounts:
+        if account['provider'] == 'deepseek':
+            print(f'  DEEPSEEK A API balance; add its key privately with token-tv connect{flag} --account deepseek_a')
+            continue
         shared = account['source_home'] == PROVIDERS[account['provider']][1]
         print(f'  {account["alias"]:<9} {"reuses your existing CLI login" if shared else "separate login"} '
               f'in {account["source_home"]}')
@@ -159,6 +165,19 @@ def doctor(args):
     unreported = []
     for account in config['accounts']:
         provider = account['provider']
+        if provider == 'deepseek':
+            from token_tv.deepseek import key_path
+            if args.live:
+                from token_tv.sources import fetch_account
+                row = fetch_account(account)
+                good = row['status'] in ('ok', 'quota_unavailable')
+                print(f'{account["alias"]:<10} DeepSeek balance: {row["status"]} (API does not report account identity)')
+                unreported.append(account['alias'])
+            else:
+                good = bool(os.environ.get('DEEPSEEK_API_KEY')) or key_path(account).is_file()
+                print(f'{account["alias"]:<10} DeepSeek API key {"present (not verified)" if good else "MISSING -> token-tv connect --account deepseek_a"}')
+            ready &= good
+            continue
         if account.get('codexbar_command') or account.get('codexbar_url'):
             # CodexBar owns this login; TokenTV only checks that it answers.
             command = account.get('codexbar_command')
@@ -206,7 +225,7 @@ def doctor(args):
     if not ready:
         print(f'Fix the lines above, then run token-tv doctor{flag} again.')
     elif args.live and unreported:
-        print(f'Ready, but CodexBar did not report the email for {", ".join(unreported)}; '
+        print(f'Ready, but the source did not report the email for {", ".join(unreported)}; '
               f'check it reads the account you expect. Start with: token-tv run{flag}')
     elif args.live:
         print(f'Ready: every account answered with the expected email. Start with: token-tv run{flag}')
@@ -218,14 +237,14 @@ def doctor(args):
 def demo(args):
     from PIL import Image
     from token_tv.display import STYLES, render_page
-    from token_tv.sample import snapshot
+    from token_tv.sample import balance_snapshot, snapshot
     out = Path(args.out).expanduser()
     try:
         out.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         print(f'Could not create {out}: {error.strerror or error}', file=sys.stderr)
         return 1
-    data = snapshot(time.time())
+    data = (balance_snapshot if args.deepseek else snapshot)(time.time())
     for style in STYLES:
         image = render_page(data, style=style)
         kind = 'gif' if image[:4] == b'GIF8' else 'jpg' if image[:3] == b'\xff\xd8\xff' else 'png'
@@ -322,6 +341,7 @@ def main(argv=None):
     config.add_argument('--config', default=default_config(), help='config path (default: %(default)s)')
 
     s = commands.add_parser('setup', parents=[config], help='write a config; never overwrites one')
+    s.add_argument('--deepseek', action='store_true', help='include DeepSeek API balance (enter the key later with connect)')
     for provider in PROVIDERS:
         s.add_argument(f'--{provider}-email', action='append',
                        help=f'{provider.title()} account email; repeat for accounts B and C')
@@ -336,6 +356,7 @@ def main(argv=None):
     o = commands.add_parser('doctor', parents=[config], help='check CLIs and logins')
     o.add_argument('--live', action='store_true', help='ask each provider now and compare the email; the CLI may refresh an expired login; prints status only')
     d = commands.add_parser('demo', help='render every clock face with sample data')
+    d.add_argument('--deepseek', action='store_true', help='preview Claude, Codex and a sample DeepSeek balance')
     d.add_argument('--out', default='token-tv-demo', help='output folder (default: %(default)s)')
     d.add_argument('--scale', type=int, default=3, help='extra enlarged PNG copy (1 = none)')
     commands.add_parser('connect', parents=[config], help='log an account in with its official CLI',

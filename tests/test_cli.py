@@ -94,7 +94,7 @@ class CliTest(unittest.TestCase):
         with mock.patch('token_tv.sources.fetch_account', return_value=unreported):
             code, out, _ = run('doctor', '--config', str(self.config), '--live')
         self.assertEqual(code, 0)
-        self.assertIn('CodexBar did not report the email for CLAUDE A', out)
+        self.assertIn('the source did not report the email for CLAUDE A', out)
         failed = {'status': 'error', 'identity_verified': False}
         with mock.patch('token_tv.sources.fetch_account', return_value=failed):
             code, out, _ = run('doctor', '--config', str(self.config), '--live')

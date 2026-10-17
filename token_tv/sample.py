@@ -23,3 +23,16 @@ def snapshot(now=None, sample=SAMPLE):
                 window['resets_at'] = now + window['resets_in']
         accounts[key] = row
     return {'schema': 1, 'updated_at': now or 0, 'accounts': accounts}
+
+
+def balance_snapshot(now=None):
+    """Three-provider preview with a synthetic DeepSeek balance."""
+    from token_tv.deepseek import normalize_balance
+    data = snapshot(now, [SAMPLE[0], SAMPLE[3]])
+    data['accounts']['deepseek_a'] = {
+        'key': 'deepseek_a', 'alias': 'DEEPSEEK A', 'provider': 'deepseek', 'status': 'ok',
+        'identity_verified': False, 'source': 'deepseek_api', 'windows': [],
+        'fetched_at': now or 0, 'last_success_at': now or 0,
+        'balance': normalize_balance({'is_available': True, 'balance_infos': [
+            {'currency': 'USD', 'total_balance': '12.34', 'granted_balance': '2.00', 'topped_up_balance': '10.34'}]})}
+    return data

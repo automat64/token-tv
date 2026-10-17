@@ -1,8 +1,10 @@
 """Sign in to one account's own CLI home, without changing defaults."""
 import argparse
+import getpass
 import os
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 from token_tv.sources import exe, fetch_account, load_config, scoped_env
@@ -43,6 +45,32 @@ def main():
     if account is None or not account.get("source_home"):
         parser.error("An account with its own CLI home (source_home) is required")
     root = Path(account["source_home"]).expanduser()
+    if account['provider'] == 'deepseek':
+        from token_tv.deepseek import key_path, save_key
+        if not sys.stdin.isatty():
+            parser.error('Enter the DeepSeek key in a local interactive terminal, not a command argument or chat')
+        if os.environ.get('DEEPSEEK_API_KEY'):
+            parser.error('Unset DEEPSEEK_API_KEY before saving a key; the environment overrides the saved key')
+        if key_path(account).exists() and input('Replace the saved DeepSeek key? Type REPLACE: ').strip() != 'REPLACE':
+            print('Kept the existing key.')
+            return
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', getpass.GetPassWarning)
+                value = getpass.getpass('DeepSeek API key (hidden): ')
+            save_key(account, value)
+        except (EOFError, getpass.GetPassWarning):
+            parser.error('Hidden input unavailable; use a local terminal')
+        except (ValueError, OSError):
+            parser.error('Could not save key; check its format and the private storage directory')
+        finally:
+            value = None
+        row = fetch_account(account)
+        print('Balance check: ' + row['status'] + '. The API does not report account identity.')
+        if row['status'] not in ('ok', 'quota_unavailable'):
+            raise SystemExit(1)
+        print('Key saved privately. A running TokenTV picks it up on its next poll.')
+        return
     default, marker = DEFAULT_HOMES[account["provider"]]
     keychain = account["provider"] == "claude" and sys.platform == "darwin"  # Claude Code on macOS keeps it there
     if root == Path(default).expanduser() and ((root / marker).is_file() or keychain):

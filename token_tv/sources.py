@@ -19,6 +19,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from token_tv.usage import normalize_claude, normalize_codex, normalize_codexbar, normalize_grok, timestamp, window
 from token_tv.display import STYLES
+from token_tv.deepseek import has_balance, normalize_balance, payload as deepseek_payload
 
 CODEXBAR_SOURCES = {"auto", "web", "cli", "oauth", "api"}
 AUTH_WORDS = ("auth", "login", "sign in", "token")
@@ -38,7 +39,7 @@ class SourceError(Exception):
 def scoped_env(provider, root):
     env = dict(os.environ)
     for key in ("OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN",
-                "GROK_OAUTH_TOKEN", "GROK_API_KEY", "XAI_API_KEY", "GROK_AUTH_TOKEN", "CLAUDECODE"):
+                "GROK_OAUTH_TOKEN", "GROK_API_KEY", "XAI_API_KEY", "GROK_AUTH_TOKEN", "CLAUDECODE", "DEEPSEEK_API_KEY"):
         env.pop(key, None)
     variable = {"claude": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME", "grok": "GROK_HOME"}[provider]
     env[variable] = str(root)
@@ -122,7 +123,7 @@ def load_config(path):
     for account in data.get("accounts", []):
         if set(account) - allowed:
             raise ValueError("Only credential-free account metadata is allowed")
-        if account.get("provider") not in ("claude", "codex", "grok"):
+        if account.get("provider") not in ("claude", "codex", "grok", "deepseek"):
             raise ValueError("Unknown provider")
         check_codexbar(account)
         key = account.get("key", "")
@@ -130,7 +131,12 @@ def load_config(path):
             raise ValueError("Account keys must be unique")
         if not isinstance(account.get("alias"), str) or not 1 <= len(account["alias"]) <= 32:
             raise ValueError("Account alias is required")
-        if not account.get("email"):
+        if account['provider'] == 'deepseek':
+            if not isinstance(account.get('source_home'), str) or not account['source_home'].strip():
+                raise ValueError('DeepSeek needs a source_home for its private API key file')
+            if set(account) - {'key', 'alias', 'provider', 'source_home'}:
+                raise ValueError('DeepSeek supports an API key balance source, without email verification or snapshot imports')
+        elif not account.get("email"):
             raise ValueError("Expected account identity is required")
         seen.add(key)
     if not seen:
@@ -421,6 +427,11 @@ def fetch_account(account):
                 raise SourceError("invalid_codexbar_output")
             row["windows"] = normalize_codexbar(entry)
             row["identity_verified"] = verified
+        elif account['provider'] == 'deepseek':
+            row['balance'] = normalize_balance(deepseek_payload(account))
+            row['source'] = 'deepseek_api'
+            # The balance endpoint has no account email/ID; key validity is not identity verification.
+            row['identity_verified'] = False
         elif account["provider"] == "claude":
             profile, data = claude_payload(account)
             if not identity_matches(account["email"], email_from_profile(profile)):
@@ -436,7 +447,7 @@ def fetch_account(account):
             data = grok_payload(account)
             row["windows"] = normalize_grok(data)
             row["identity_verified"] = True
-        row["status"] = "ok" if row["windows"] else "quota_unavailable"
+        row["status"] = "ok" if row["windows"] or has_balance(row) else "quota_unavailable"
     except SourceError as error:
         row["status"] = error.code if error.code in {"auth_required", "identity_mismatch", "stale"} else "error"
         row["error_code"] = error.code

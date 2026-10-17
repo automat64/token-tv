@@ -16,6 +16,7 @@ import time
 from PIL import Image, ImageDraw
 
 from token_tv.display import ASSETS, overview_rows, pixel_text, primary_window
+from token_tv.deepseek import amount_text, primary_balance
 
 SIZE = 240
 FPS = 10
@@ -42,6 +43,12 @@ EVENTS = ('dash', 'hop', 'spin', 'sparkle', 'shooting_star', 'huddle')
 @functools.lru_cache(maxsize=None)
 def sprite(provider):
     """Project mascot with hard alpha and at most eight colours, for a compact GIF."""
+    if provider == 'deepseek':
+        image = Image.new('RGBA', (24, 24))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((1, 1, 22, 22), radius=4, fill=(65, 123, 245, 255))
+        pixel_text(draw, (7, 5), 'D', scale=2, color=(235, 244, 255, 255))
+        return image
     image = Image.open(ASSETS / f'{provider}-pixel.png').convert('RGBA')
     image = image.crop(image.getbbox())
     alpha = image.getchannel('A').point(lambda a: 255 if a >= 128 else 0)
@@ -79,6 +86,11 @@ def backdrop():
 def readings(snapshot):
     rows = []
     for row in overview_rows(snapshot):
+        if row['provider'] == 'deepseek':
+            item = primary_balance(row)
+            text = f"{item['currency']} {amount_text(item['total_balance'])}" if item else 'BAL --'
+            rows.append(('deepseek', text, item is not None and row['status'] == 'stale'))
+            continue
         value = primary_window(row)
         used = max(0, min(100, value['used_percent'])) if value else None
         rows.append((row['provider'], used, bool(value) and row['status'] != 'ok'))
@@ -87,7 +99,7 @@ def readings(snapshot):
 
 def seed_for(rows, now=None):
     bucket = int((time.time() if now is None else now) // 1800)
-    key = repr([(p, None if u is None else round(u), old) for p, u, old in rows]) + f'|{bucket}'
+    key = repr([(p, u if u is None or isinstance(u, str) else round(u), old) for p, u, old in rows]) + f'|{bucket}'
     return int(hashlib.sha256(key.encode()).hexdigest()[:12], 16)
 
 
@@ -158,6 +170,11 @@ def bubble(frame, draw, provider, x, y, mirrored):
 
 
 def tag(draw, x, y, used, old):
+    if isinstance(used, str):
+        currency, amount = used.split(' ', 1)
+        pixel_text(draw, (x, y + RADIUS + 5), amount, color=DIM if old else TAG, align='center')
+        pixel_text(draw, (x, y + RADIUS + 15), currency + (' OLD' if old else ''), color=DIM, align='center')
+        return
     text = '--' if used is None else f'{round(used)}%'
     width = (len(text) * 6 - 1) * 2
     pixel_text(draw, (x - width // 2, y + RADIUS + 5), text, scale=2, color=DIM if old else TAG)

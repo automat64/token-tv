@@ -1,10 +1,13 @@
 # Adding a service (provider)
 
-TokenTV reads Claude, Codex and Grok today. A new service is more than one function: the name is
-listed in several places. This is the full list as of 2026-10-04; an AI agent can follow it.
+TokenTV reads Claude, Codex and Grok quotas, plus [DeepSeek API balances](deepseek.md).
+A new service is more than one function: the name is listed in several places.
+The checklist below covers CLI-backed quota providers.
 
-**First check the service exposes usage you can read** (percent used and reset time) through its
-own signed-in CLI or a documented API. If it does not, it cannot be added honestly.
+**First check the service exposes data you can read** through its own signed-in CLI or a
+documented API. Preserve its meaning: a monetary balance must not become a fabricated usage
+percentage or reset time. DeepSeek uses a separate `balance` field with decimal strings and
+explicit currency codes; see `token_tv/deepseek.py` for an API-key-backed example.
 
 | Where | What to add |
 | --- | --- |

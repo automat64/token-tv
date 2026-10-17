@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+from token_tv.deepseek import amount_text, has_balance, primary_balance
 
 
 BACKGROUND = '#0b0e12'
@@ -19,7 +20,7 @@ TEXT = '#d9dde1'
 MUTED = TEXT
 TRACK = '#28313a'
 RULE = '#202730'
-PROVIDER_INK = {'claude': '#d68e68', 'codex': '#a799e5', 'grok': '#cbd1d7'}
+PROVIDER_INK = {'claude': '#d68e68', 'codex': '#a799e5', 'grok': '#cbd1d7', 'deepseek': '#74a9ff'}
 ICON_PAPER = PROVIDER_INK['grok']
 FONT_MAIN = '/usr/share/fonts/truetype/dejavu/DejaVuSans'
 FONT_NUMBERS = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono'
@@ -28,7 +29,7 @@ STYLES = ('pixel', 'digital', 'neon', 'retro', 'hud', 'space', 'gameboy')
 GAUGE_LEVELS = ((50, '#76a99a'), (80, '#93c9b9'), (90, '#d1b275'), (101, '#d8877e'))
 STATUS = {'loading': 'WAIT', 'auth_required': 'LOGIN', 'identity_mismatch': 'CHECK',
           'quota_unavailable': 'NO DATA', 'error': 'ERROR', 'rate_limited': 'RETRY', 'stale': 'OLD'}
-PROVIDERS = ('claude', 'codex', 'grok')
+PROVIDERS = ('claude', 'codex', 'grok', 'deepseek')
 ASSETS = Path(__file__).with_name('assets')
 
 
@@ -51,8 +52,8 @@ def overview_rows(snapshot):
     for provider in present or PROVIDERS:
         accounts = [dict(row, key=key) for key, row in snapshot['accounts'].items()
                     if row['provider'] == provider]
-        available = [row for row in accounts if row['status'] == 'ok' and row['windows']]
-        previous = [row for row in accounts if row['status'] == 'stale' and row['windows']]
+        available = [row for row in accounts if row['status'] == 'ok' and (row['windows'] or has_balance(row))]
+        previous = [row for row in accounts if row['status'] == 'stale' and (row['windows'] or has_balance(row))]
         rows.append((available or previous or accounts or [
             {'key': provider, 'provider': provider, 'alias': provider.upper() + ' A',
              'status': 'auth_required', 'windows': []}])[0])
@@ -144,6 +145,26 @@ def reading(row):
     return used, period, old, reset
 
 
+def balance_panel(image, row, y, background=BACKGROUND, ink='#74a9ff', border=RULE, height=76):
+    """A currency reading has no percentage gauge or invented reset time."""
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((4, y, 235, y + height - 1), fill=background, outline=border)
+    item = primary_balance(row)
+    old = item is not None and row['status'] == 'stale'
+    draw.text((12, y + 5), account_label(row), font=font(12, True), fill=ink)
+    state = 'OLD' if old else 'BALANCE' if item else STATUS.get(row['status'], 'NO DATA')
+    draw.text((228, y + 5), state, font=font(10, True), fill=ink, anchor='ra')
+    text = amount_text(item['total_balance']) if item else '--'
+    size = 30
+    while size > 12 and draw.textlength(text, font=font(size, True, True)) > 208:
+        size -= 1
+    draw.text((12, y + 22), text, font=font(size, True, True), fill=ink)
+    caption = item['currency'] + ' REMAINING' if item else 'API BALANCE UNAVAILABLE'
+    if item and not old and (row.get('balance') or {}).get('is_available') is False:
+        caption = item['currency'] + ' / API UNAVAILABLE'
+    draw.text((12, y + height - 19), caption, font=font(11), fill=ink)
+
+
 def watch_payload(snapshot):
     """Flat JSON for Apple Watch complication apps that read one value by path, e.g. accounts.claude_a.used_percent.
 
@@ -156,6 +177,17 @@ def watch_payload(snapshot):
         while key in accounts:
             number += 1
             key = f'{base}_{number}'
+        if row['provider'] == 'deepseek':
+            item = primary_balance(row)
+            old = row['status'] == 'stale' and item is not None
+            text = f"{item['currency']} {amount_text(item['total_balance'])} LEFT" if item else 'NO DATA'
+            if old:
+                text += ' OLD'
+            accounts[key] = {'label': account_label(row), 'balance': row.get('balance'),
+                             'used_percent': None, 'used': None, 'window': None, 'resets_at': None,
+                             'resets_in': '--', 'text': text, 'state': 'missing' if item is None else 'old' if old else 'ok'}
+            parts.append(f'{account_label(row)} {text}')
+            continue
         used, period, old, reset = reading(row)
         used = None if used is None else round(used)
         value = primary_window(row)
@@ -207,6 +239,8 @@ PIXEL_GLYPHS = {
     '8': '01110/10001/10001/01110/10001/10001/01110',
     '9': '01110/10001/10001/01111/00001/00001/01110',
     '%': '11001/11010/00010/00100/01000/01011/10011',
+    '.': '00000/00000/00000/00000/00000/00110/00110',
+    '<': '00001/00010/00100/01000/00100/00010/00001',
     '-': '00000/00000/00000/11111/00000/00000/00000',
     '?': '01110/10001/00001/00010/00100/00000/00100',
     ' ': '00000/00000/00000/00000/00000/00000/00000',
@@ -219,6 +253,8 @@ def pixel_text(draw, xy, text, scale=1, color=TEXT, align='left'):
     x, y = xy
     if align == 'right':
         x -= width
+    elif align == 'center':
+        x -= width // 2
     for index, character in enumerate(text):
         pattern = PIXEL_GLYPHS.get(character, PIXEL_GLYPHS['?']).split('/')
         for yy, line in enumerate(pattern):
@@ -227,6 +263,46 @@ def pixel_text(draw, xy, text, scale=1, color=TEXT, align='left'):
                     px = x + (index * 6 + xx) * scale
                     py = y + yy * scale
                     draw.rectangle((px, py, px + scale - 1, py + scale - 1), fill=color)
+
+
+def pixel_deepseek_logo(image, xy):
+    """A code-native pixel whale, drawn on the same 24px grid as the other mascots."""
+    icon = Image.new('RGBA', (24, 24))
+    draw = ImageDraw.Draw(icon)
+    # Stepped whale silhouette: broad head, curved belly and raised forked tail.
+    draw.polygon([(2, 9), (4, 9), (4, 7), (7, 7), (7, 6), (12, 6),
+                  (12, 7), (15, 7), (15, 9), (17, 9), (17, 11),
+                  (19, 11), (19, 8), (18, 8), (18, 5), (20, 5),
+                  (21, 7), (22, 5), (23, 5), (23, 9), (22, 9),
+                  (22, 12), (20, 12), (20, 15), (18, 15), (18, 17),
+                  (15, 17), (15, 19), (11, 19), (11, 18), (7, 18),
+                  (7, 17), (4, 17), (4, 15), (2, 15)], fill='#416bf5')
+    draw.rectangle((4, 9, 6, 12), fill='#5789ff')
+    draw.rectangle((7, 8, 12, 9), fill='#74a9ff')
+    draw.rectangle((7, 11, 8, 12), fill='#edf5ff')
+    draw.rectangle((4, 15, 8, 15), fill='#a7caff')
+    draw.rectangle((7, 16, 12, 16), fill='#74a9ff')
+    draw.polygon([(12, 13), (15, 14), (15, 17), (13, 16)], fill='#294acf')
+    icon = icon.resize((48, 48), Image.Resampling.NEAREST)
+    image.paste(icon, xy, icon)
+
+
+def pixel_balance(image, draw, row, y):
+    pixel_deepseek_logo(image, (14, y + 10))
+    pixel_text(draw, (68, y + 3), account_label(row))
+    item = primary_balance(row)
+    old = item is not None and row['status'] == 'stale'
+    pixel_text(draw, (226, y + 3), 'BAL OLD' if old else 'BALANCE', align='right')
+    number = amount_text(item['total_balance']) if item else '--'
+    # Leave room for the currency at the right, including large and tiny balances.
+    scale = next(s for s in (3, 2, 1) if (len(number) * 6 - 1) * s <= 116)
+    pixel_text(draw, (68, y + 21), number, scale=scale)
+    currency = item['currency'] if item else STATUS.get(row['status'], 'NO DATA')
+    pixel_text(draw, (226, y + 25), currency, scale=2 if item else 1, align='right')
+    caption = 'CREDIT REMAINING' if item else 'CREDIT UNAVAILABLE'
+    if item and not old and (row.get('balance') or {}).get('is_available') is False:
+        caption = 'API UNAVAILABLE'
+    pixel_text(draw, (68, y + 52), caption, color=MUTED)
 
 
 def render_pixel(snapshot):
@@ -238,6 +314,9 @@ def render_pixel(snapshot):
         if index:
             for x in range(14, 227, 4):
                 draw.point((x, y - 6), fill=RULE)
+        if row['provider'] == 'deepseek':
+            pixel_balance(image, draw, row, y)
+            continue
         if row['provider'] == 'grok':
             disc = Image.new('RGB', (24, 24), BACKGROUND)
             ImageDraw.Draw(disc).ellipse((1, 1, 22, 22), fill=ICON_PAPER)

@@ -7,8 +7,8 @@ const THEMES = [
  {id:'hud', name:'Sci-Fi HUD', eyebrow:'', title:'AI PROVIDER USAGE', note:'Real-time usage monitor'}
 ];
 const STATUS = {ok:'Connected', loading:'Loading', auth_required:'Login needed', identity_mismatch:'Check identity', quota_unavailable:'Quota unavailable', stale:'OLD · Previous value', rate_limited:'Retry later', error:'Fetch failed'};
-const PROVIDERS = ['claude', 'codex', 'grok'];
-const COMPANIES = {claude:'ANTHROPIC', codex:'OPENAI', grok:'XAI'};
+const PROVIDERS = ['claude', 'codex', 'grok', 'deepseek'];
+const COMPANIES = {claude:'ANTHROPIC', codex:'OPENAI', grok:'XAI', deepseek:'API BALANCE'};
 const svgNS = 'http://www.w3.org/2000/svg';
 const $ = s => document.querySelector(s);
 const readPreference = (k, f) => {try {return JSON.parse(localStorage.getItem(k)) ?? f} catch {return f}};
@@ -35,13 +35,15 @@ function icon(provider) {
  } else if (provider === 'codex') {
   s.append(svgNode('path', {d:'M24 5 40.5 14.5V33.5L24 43 7.5 33.5V14.5Z', 'stroke-width':3.2}));
   s.append(svgNode('path', {d:'M7.5 14.5 24 24 40.5 14.5M24 24V43', 'stroke-width':3.2}));
+ } else if (provider === 'deepseek') {
+  s.append(svgNode('path', {d:'M12 8h10c22 0 22 32 0 32H12Z', 'stroke-width':4}));
  } else {
   s.append(svgNode('circle', {cx:24, cy:24, r:12.5, 'stroke-width':3.4}));
   s.append(svgNode('path', {d:'M5 43C17 33 31 19 43 5 34 19 21 32 5 43Z', fill:'currentColor', stroke:'currentColor', 'stroke-width':1.6}));
  }
  return s;
 }
-function mascot(provider) {const img = el('img', undefined, 'pixel-mascot'); img.src = `/assets/${provider}-pixel.png`; img.alt = ''; img.width = 32; img.height = 32; img.decoding = 'async'; return img}
+function mascot(provider) {if (provider === 'deepseek') {const mark = el('span', 'D', 'pixel-mascot deepseek-mark'); mark.setAttribute('aria-hidden', 'true'); return mark} const img = el('img', undefined, 'pixel-mascot'); img.src = `/assets/${provider}-pixel.png`; img.alt = ''; img.width = 32; img.height = 32; img.decoding = 'async'; return img}
 function clockGlyph() {
  const s = svgNode('svg', {viewBox:'0 0 24 24', 'aria-hidden':'true', fill:'none', stroke:'currentColor', 'stroke-width':1.8, 'stroke-linecap':'round', class:'clock-icon'});
  s.append(svgNode('circle', {cx:12, cy:12, r:9}), svgNode('path', {d:'M12 7.5V12l3 2'}));
@@ -54,7 +56,7 @@ function clockGlyph() {
 /* Pixel Retro scenery on a 200×62 logical grid, anchored bottom-right. Sky objects sit
  * near x≈138 so they fall between the title row and the score column. */
 function scene(provider) {
- const W = 200, H = 62, rnd = seeded({claude:11, codex:23, grok:37}[provider]);
+ const W = 200, H = 62, rnd = seeded({claude:11, codex:23, grok:37, deepseek:41}[provider]);
  const s = svgNode('svg', {viewBox:`0 0 ${W} ${H}`, preserveAspectRatio:'xMaxYMax slice', 'shape-rendering':'crispEdges', class:'scene', 'aria-hidden':'true'});
  const rect = (x, y, w, h, fill, cls) => {const r = svgNode('rect', {x, y, width:w, height:h, fill}); if (cls) r.setAttribute('class', cls); s.append(r)};
  const bands = colors => colors.forEach((c, i) => rect(0, Math.floor(i * H / colors.length), W, Math.ceil(H / colors.length) + 1, c));
@@ -127,6 +129,33 @@ function gauge(value, label) {
 }
 function stat(key, value, cls) {const s = el('div', undefined, 'stat' + (cls ? ' ' + cls : '')); s.append(el('span', key, 'stat-k'), typeof value === 'string' ? el('span', value, 'stat-v') : value); return s}
 
+function moneyText(value) {
+ if (typeof value !== 'string' || !/^-?\d+(\.\d+)?$/.test(value)) return '—';
+ const amount = Number(value);
+ if (!Number.isFinite(amount)) return '—';
+ if (amount !== 0 && Math.abs(amount) < .0001) return (amount < 0 ? '-' : '') + '<0.0001';
+ return new Intl.NumberFormat('en-US', {minimumFractionDigits:2, maximumFractionDigits:4}).format(amount);
+}
+function balanceContent(account, stale) {
+ const balance = account.balance || {}, valid = ['ok', 'stale'].includes(account.status);
+ const currencies = valid ? balance.currencies || [] : [];
+ const primary = currencies.find(b => b.total_balance !== null);
+ const reading = el('div', undefined, 'reading balance-reading');
+ reading.append(el('span', 'API BALANCE REMAINING', 'reading-label'));
+ reading.append(el('div', primary ? `${primary.currency} ${moneyText(primary.total_balance)}` : '—', 'balance-amount'));
+ reading.append(el('span', primary ? stale ? 'OLD · Last known balance' : 'Account balance' : account.status === 'quota_unavailable' ? 'No balance reported.' : STATUS[account.status] || 'No reading available.', 'level-label'));
+ const availability = el('div', undefined, 'timer balance-state');
+ availability.append(el('span', 'API ACCESS', 'timer-label'), el('span', !primary || stale ? 'Unknown' : balance.is_available === true ? 'Available' : balance.is_available === false ? 'Unavailable' : 'Unknown', 'timer-value'));
+ const details = el('div', undefined, 'more-windows balance-breakdown');
+ for (const b of currencies) {
+  const line = el('div', undefined, 'balance-currency');
+  line.append(el('strong', b.currency), stat('Remaining', moneyText(b.total_balance)), stat('Topped up', moneyText(b.topped_up_balance)), stat('Granted', moneyText(b.granted_balance)));
+  details.append(line);
+ }
+ details.append(el('p', 'Balance is account-wide. Token counts, spending history and account identity are not reported by this API.', 'balance-note'));
+ return [reading, availability, details];
+}
+
 function setTheme(theme) {
  const config = THEMES.find(t => t.id === theme) || THEMES[0];
  document.documentElement.dataset.theme = config.id; savePreference('tokentv.theme', config.id);
@@ -161,6 +190,9 @@ function providerCard(provider, accounts) {
  const tabs = el('div', undefined, 'account-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', provider.toUpperCase() + ' accounts');
  for (const row of accounts) {const letter = (row.alias || '').split(' ').at(-1); const b = el('button', letter, 'account-tab'); b.type = 'button'; b.dataset.account = row.key; b.title = row.alias; b.setAttribute('aria-label', row.alias); b.setAttribute('aria-pressed', String(row.key === a.key)); b.onclick = () => {accountChoices[provider] = row.key; savePreference('tokentv.accounts', accountChoices); renderAccounts(); $(`[data-account="${row.key}"]`)?.focus()}; tabs.append(b)}
  head.append(logo, name, tabs);
+ if (provider === 'deepseek') {
+  card.append(art, head, ...balanceContent(a, stale));
+ } else {
  const reading = el('div', undefined, 'reading'), meta = el('div', undefined, 'reading-meta');
  meta.append(el('span', period(primary) + ' USED', 'reading-label'));
  if (primary) meta.append(el('span', stale ? 'OLD · Last known usage' : levelText(value), 'level-label'));
@@ -181,11 +213,12 @@ function providerCard(provider, accounts) {
   for (const w of others) {const line = el('div', undefined, 'window-detail'); line.append(el('span', period(w), 'window-name'), gauge(w.used_percent, a.alias + ' ' + period(w) + ' used quota'), el('span', Math.round(w.used_percent) + '%', 'window-percent'), el('span', resetTime(w.resets_at), 'window-timer')); details.append(line)}
   card.append(details);
  }
+ }
  const checked = stale ? a.last_success_at : a.fetched_at;
  let when = el('span', '—', 'stat-v');
  if (checked) {const d = new Date(checked * 1000); when = el('time', d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}), 'stat-v'); when.dateTime = d.toISOString(); when.title = d.toLocaleString('en-GB')}
  const foot = el('div', undefined, 'card-foot');
- foot.append(stat('Account', a.alias || '—'), stat('Window', primary ? period(primary) : '—'), stat('Source', a.source === 'mini' ? 'This computer' : a.source === 'codexbar' ? 'CodexBar' : a.source ? 'Linked snapshot' : '—'), stat(stale ? 'Last good' : 'Checked', when), stat('Status', el('span', offline ? 'OFFLINE · Previous value' : STATUS[a.status] || 'Unknown', 'row-status stat-v'), 'stat-status'));
+ foot.append(stat('Account', a.alias || '—'), stat('Window', provider === 'deepseek' ? 'API balance' : primary ? period(primary) : '—'), stat('Source', provider === 'deepseek' ? 'DeepSeek API' : a.source === 'mini' ? 'This computer' : a.source === 'codexbar' ? 'CodexBar' : a.source ? 'Linked snapshot' : '—'), stat(stale ? 'Last good' : 'Checked', when), stat('Status', el('span', offline ? 'OFFLINE · Previous value' : STATUS[a.status] || 'Unknown', 'row-status stat-v'), 'stat-status'));
  card.append(foot); shell.append(card); return shell;
 }
 function renderAccounts() {
@@ -194,7 +227,7 @@ function renderAccounts() {
  const used = PROVIDERS.filter(p => rows.some(a => a.provider === p)); // only services that are set up
  for (const provider of used.length ? used : PROVIDERS) fragment.append(providerCard(provider, rows.filter(a => a.provider === provider)));
  $('#providers').replaceChildren(fragment);
- const reporting = offline ? 0 : rows.filter(a => a.status === 'ok' && (a.windows || []).some(w => Number.isFinite(w.used_percent))).length;
+ const reporting = offline ? 0 : rows.filter(a => a.status === 'ok' && ((a.windows || []).some(w => Number.isFinite(w.used_percent)) || (a.balance?.currencies || []).some(b => b.total_balance !== null))).length;
  $('#account-count').textContent = pad(rows.length); $('#reporting-count').textContent = pad(reporting);
  $('#foot-reporting').textContent = `${reporting} / ${rows.length} reporting`;
  if (focused) {const b = [...document.querySelectorAll('[data-account]')].find(b => b.dataset.account === focused); b?.focus({preventScroll:true})}

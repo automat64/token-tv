@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from token_tv.sources import fetch_account
+from token_tv.deepseek import has_balance
 
 
 class UsageStore:
@@ -26,12 +27,14 @@ class UsageStore:
                 previous = self.rows[row["key"]]
                 if row["status"] in ("ok", "quota_unavailable"):
                     row["last_success_at"] = row["fetched_at"]
-                elif row["status"] != "identity_mismatch" and previous.get("windows") and previous.get("last_success_at"):
+                elif row["status"] != "identity_mismatch" and (previous.get("windows") or has_balance(previous)) and previous.get("last_success_at"):
                     row["error_code"] = row.get("error_code", row["status"])
                     row["status"] = "stale"
                     row["windows"] = previous["windows"]
                     row["last_success_at"] = previous["last_success_at"]
                     row["identity_verified"] = previous.get("identity_verified", False)
+                    if has_balance(previous):
+                        row['balance'] = copy.deepcopy(previous['balance'])
                 self.rows[row["key"]] = row
             self.updated_at = int(time.time())
 
