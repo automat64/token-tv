@@ -85,6 +85,31 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(row["last_success_at"], 100)
         self.assertEqual(row["error_code"], "error")
 
+    def test_window_past_its_reset_is_unknown_not_frozen(self):
+        account = {"key": "a", "alias": "A", "provider": "claude"}
+        now = time.time()
+        windows = [{"label": "5H", "used_percent": 0.0, "resets_at": None, "duration_minutes": 300},
+                   {"label": "WEEK", "used_percent": 33.0, "resets_at": int(now) - 3600, "duration_minutes": 10080}]
+        replies = [dict(account, status="ok", windows=copy.deepcopy(windows), fetched_at=now - 60),
+                   dict(account, status="auth_required", error_code="http_401", windows=[], fetched_at=now)]
+        store = UsageStore([account], fetch=lambda _: replies.pop(0))
+        store.refresh()
+        store.refresh()
+        row = store.snapshot()["accounts"]["a"]
+        self.assertEqual(row["status"], "stale")
+        self.assertEqual([w["label"] for w in row["windows"]], ["5H"])
+        self.assertIsNone(row["weekly_percent"])
+        self.assertIsNone(row["weekly_reset_minutes"])
+        self.assertEqual(len(store.rows["a"]["windows"]), 2)  # the cache keeps it; only readers drop it
+
+        only_week = [dict(account, status="ok", windows=copy.deepcopy(windows[1:]), fetched_at=now)]
+        store = UsageStore([account], fetch=lambda _: only_week.pop(0))
+        store.refresh()
+        row = store.snapshot()["accounts"]["a"]
+        self.assertEqual((row["status"], row["error_code"], row["windows"]), ("stale", "reset_passed", []))
+        image = Image.open(io.BytesIO(render_page(store.snapshot(), 0, "pixel")))
+        self.assertEqual(image.size, (240, 240))
+
     def test_wrong_identity_does_not_reuse_previous_account_values(self):
         account = {"key": "a", "alias": "A", "provider": "claude"}
         replies = [dict(account, status="ok", windows=[{"label": "WEEK", "used_percent": 31}], fetched_at=time.time(), identity_verified=True),

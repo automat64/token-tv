@@ -47,6 +47,12 @@ class UsageStore:
             if row["status"] == "ok" and now - row.get("last_success_at", row["fetched_at"]) > 900:
                 row["status"] = "stale"
                 row.setdefault("error_code", "snapshot_old")
+            # A window whose reset has passed no longer says how much is used: it is unknown until the next fetch.
+            current = [w for w in row["windows"] if not w.get("resets_at") or w["resets_at"] > now]
+            if row["windows"] and not current and row["status"] == "ok":
+                row["status"] = "stale"
+                row["error_code"] = "reset_passed"
+            row["windows"] = current
             by_label = {w["label"]: w for w in row["windows"]}
             for prefix, label in (("session", "5H"), ("weekly", "WEEK")):
                 value = by_label.get(label, {})
