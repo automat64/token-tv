@@ -232,6 +232,8 @@ class StartTest(unittest.TestCase):
         self.assertEqual(code, 0)
         data = json.loads(self.config.read_text())
         self.assertEqual([(a['provider'], a['email']) for a in data['accounts']], [('claude', 'me@example.com')])
+        self.assertIs(data['accounts'][0]['refresh_with_cli'], True)  # an expired login must not freeze the clock
+        self.assertIn('refresh_with_cli', out)
         self.assertEqual(data['device_url'], 'http://192.168.0.50')  # bare IP is accepted
         run.assert_called_once()
 

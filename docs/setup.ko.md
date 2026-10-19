@@ -93,6 +93,7 @@ Grok이 한도 수치를 제공하지 않으면 `quota_unavailable`로 표시합
 
 `refresh_with_cli: true`인 Claude 계정은 401일 때 공식 CLI로 인증 갱신을 시도합니다.
 이 과정은 도구를 끈 짧은 확인 응답 하나를 요청하므로 구독 사용량을 소량 소비할 수 있습니다.
+`token-tv start`는 찾은 Claude 계정에 이 설정을 켜 둡니다. 끄려면 `false`로 바꾸세요.
 인증 파일의 토큰을 직접 수정하거나 다른 머신으로 복사하지 않습니다.
 
 [CodexBar](https://github.com/steipete/CodexBar)를 이미 쓰고 있다면 Claude·Codex 계정은 CodexBar의

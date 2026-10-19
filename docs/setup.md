@@ -86,7 +86,8 @@ See [docs/hardware-compatibility.md](hardware-compatibility.md) for what is veri
 Every login is checked against the email you configured. The clock gets only a picture,
 never a password, token or cookie. Polling runs every five minutes; old readings say OLD and
 missing data shows a dash, never a fake 0%. Claude accounts with `refresh_with_cli: true` may
-refresh an expired login through the CLI, which sends one tiny prompt.
+refresh an expired login through the CLI, which sends one tiny prompt. `token-tv start` turns this on
+for the Claude account it finds; set it to `false` to turn it off.
 
 Already use [CodexBar](https://github.com/steipete/CodexBar)? A Claude or Codex account can read
 CodexBar's usage JSON instead: see [docs/codexbar.md](codexbar.md).

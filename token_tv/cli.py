@@ -273,9 +273,15 @@ def start(args):
                 continue
             if interactive and not ask(f'Found {provider.title()} signed in as {email}. Use it? [Y/n]', 'y').lower().startswith('y'):
                 continue
-            accounts.append({'key': f'{provider}_a', 'alias': f'{provider.upper()} A', 'provider': provider,
-                             'email': email, 'source_home': home})
+            account = {'key': f'{provider}_a', 'alias': f'{provider.upper()} A', 'provider': provider,
+                       'email': email, 'source_home': home}
             print(f'{provider.title()}: {email}')
+            if provider == 'claude':
+                # Without it an expired login freezes the reading until Claude Code next runs in this home.
+                account['refresh_with_cli'] = True
+                print('  An expired login is renewed through the claude CLI (one tiny prompt); '
+                      'set refresh_with_cli to false in the config to turn this off.')
+            accounts.append(account)
         if not accounts:
             print('No signed-in Claude, Codex or Grok CLI found. Sign in to one (for example `claude`, then /login),\n'
                   'or look around first with: token-tv demo', file=sys.stderr)
