@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from token_tv.usage import normalize_claude, normalize_codex, normalize_grok
-from token_tv.sources import fetch_account, load_config, grok_identity, scoped_env
+from token_tv.sources import exe, fetch_account, load_config, grok_identity, scoped_env
 from token_tv.state import UsageStore
 from token_tv.display import render_page, pages, overview_rows, primary_window
 
@@ -22,6 +22,26 @@ class LiveTests(unittest.TestCase):
                 env = scoped_env(provider, "/explicit/account/home")
                 self.assertEqual(env[variable], "/explicit/account/home")
                 self.assertFalse(any(key in env for key in ("OPENAI_API_KEY", "GROK_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")))
+
+    def test_codex_falls_back_to_newest_editor_extension_build(self):
+        with tempfile.TemporaryDirectory() as home:
+            for version in ("26.1007.21434", "26.1021.22027", "26.909.1"):
+                path = Path(home, ".vscode-server/extensions", f"openai.chatgpt-{version}-linux-x64/bin/linux-x86_64/codex")
+                path.parent.mkdir(parents=True)
+                path.write_text("")
+                path.chmod(0o755)
+            with patch.dict("os.environ", {"HOME": home, "PATH": str(Path(home, "gone"))}):
+                self.assertEqual(exe("codex"), str(Path(home, ".vscode-server/extensions",
+                                                        "openai.chatgpt-26.1021.22027-linux-x64/bin/linux-x86_64/codex")))
+                self.assertEqual(exe("claude"), "claude")
+
+    def test_missing_codex_cli_is_not_a_login_problem(self):
+        with tempfile.TemporaryDirectory() as home:
+            Path(home, "auth.json").write_text("{}")
+            account = {"key": "codex_a", "alias": "A", "provider": "codex", "email": "a@example.com", "source_home": home}
+            with patch("token_tv.sources.subprocess.Popen", side_effect=FileNotFoundError):
+                row = fetch_account(account)
+        self.assertEqual((row["status"], row["error_code"]), ("error", "cli_unavailable"))
 
     def test_codex_uses_reported_window_duration(self):
         data = {"rateLimits": {"primary": {"usedPercent": 78, "windowDurationMins": 10080, "resetsAt": 2000000000}, "secondary": None}}

@@ -31,8 +31,9 @@ def default_config():
 
 
 def cli_path(provider):
+    from token_tv.sources import find_cli
     command = os.environ.get('TOKEN_TV_GROK_BIN', 'grok') if provider == 'grok' else PROVIDERS[provider][0]
-    return shutil.which(command)
+    return find_cli(command)
 
 
 def login_state(provider, home):

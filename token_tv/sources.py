@@ -25,9 +25,30 @@ CODEXBAR_SOURCES = {"auto", "web", "cli", "oauth", "api"}
 AUTH_WORDS = ("auth", "login", "sign in", "token")
 
 
+EDITOR_EXTENSIONS = ("~/.vscode-server/extensions", "~/.vscode/extensions", "~/.vscode-server-insiders/extensions",
+                     "~/.vscode-insiders/extensions", "~/.cursor-server/extensions", "~/.cursor/extensions")
+
+
+def bundled_codex():
+    """Newest `codex` shipped inside the ChatGPT editor extension. Each update installs it in a new
+    versioned folder and removes the old one, so a PATH captured at start stops working."""
+    found = []
+    for folder in EDITOR_EXTENSIONS:
+        for path in Path(folder).expanduser().glob("openai.chatgpt-*/bin/*/codex*"):
+            match = re.match(r"openai\.chatgpt-(\d+(?:\.\d+)*)", path.parents[2].name)
+            if match and path.stem == "codex" and path.is_file() and os.access(path, os.X_OK):
+                found.append((tuple(int(part) for part in match.group(1).split(".")), str(path)))
+    return max(found)[1] if found else None
+
+
+def find_cli(name):
+    """Full path of a CLI, or None."""
+    return shutil.which(name) or (bundled_codex() if name == "codex" else None)
+
+
 def exe(name):
     """Full path of a CLI. On Windows npm installs `claude`/`codex` as .cmd shims that a bare name can't start."""
-    return shutil.which(name) or name
+    return find_cli(name) or name
 
 
 class SourceError(Exception):
@@ -50,9 +71,13 @@ def scoped_env(provider, root):
 
 class RPC:
     def __init__(self, command, env):
-        self.process = subprocess.Popen(command, env=env, stdin=subprocess.PIPE,
-                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                        text=True, bufsize=1)
+        try:
+            self.process = subprocess.Popen(command, env=env, stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                            text=True, bufsize=1)
+        except FileNotFoundError:
+            # A missing CLI is not a login problem.
+            raise SourceError("cli_unavailable") from None
         self.messages = queue.Queue()
         self.sequence = 0
         def read():
