@@ -277,7 +277,9 @@ def codex_payload(account):
         rpc.call("initialize", {"clientInfo": {"name": "token_tv", "title": "TokenTV", "version": __version__}, "capabilities": {}})
         rpc.process.stdin.write('{"method":"initialized","params":{}}\n')
         rpc.process.stdin.flush()
-        identity = rpc.call("account/read", {"refreshToken": True}).get("account") or {}
+        # Codex owns automatic token refresh. Forcing it here can return no account
+        # even while the existing ChatGPT session can still fetch rate limits.
+        identity = rpc.call("account/read", {"refreshToken": False}).get("account") or {}
         if identity.get("type") != "chatgpt":
             raise SourceError("auth_required")
         if not identity_matches(account["email"], identity.get("email")):

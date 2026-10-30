@@ -47,6 +47,29 @@ class LiveTests(unittest.TestCase):
         data = {"rateLimits": {"primary": {"usedPercent": 78, "windowDurationMins": 10080, "resetsAt": 2000000000}, "secondary": None}}
         self.assertEqual(normalize_codex(data), [{"label": "WEEK", "used_percent": 78.0, "resets_at": 2000000000, "duration_minutes": 10080}])
 
+    def test_codex_reads_existing_identity_without_forcing_token_refresh(self):
+        with tempfile.TemporaryDirectory() as home:
+            Path(home, "auth.json").write_text("{}")
+            account = {"key": "a", "alias": "A", "provider": "codex", "email": "a@example.com", "source_home": home}
+            for identity, expected in (({"type": "chatgpt", "email": "a@example.com"}, "ok"),
+                                       ({"type": "chatgpt", "email": "wrong@example.com"}, "identity_mismatch"),
+                                       (None, "auth_required")):
+                with self.subTest(identity=identity), patch("token_tv.sources.RPC") as factory:
+                    rpc = factory.return_value
+                    def reply(method, params=None):
+                        if method == "account/read":
+                            return {"account": None if params.get("refreshToken") else identity}
+                        if method == "account/rateLimits/read":
+                            return {"rateLimits": {"primary": {"usedPercent": 25, "windowDurationMins": 300}}}
+                        return {}
+                    rpc.call.side_effect = reply
+                    row = fetch_account(account)
+                    self.assertEqual(row["status"], expected)
+                    self.assertEqual(row["identity_verified"], expected == "ok")
+                    methods = [c.args[0] for c in rpc.call.call_args_list]
+                    self.assertEqual("account/rateLimits/read" in methods, expected == "ok")
+                    rpc.close.assert_called_once()
+
     def test_missing_grok_quota_is_unknown(self):
         self.assertEqual(normalize_grok({"config": {"currentPeriod": {"end": "2026-10-05T00:00:00Z"}}}), [])
         self.assertEqual(normalize_claude({"five_hour": {"utilization": None}, "seven_day": {"utilization": 24, "resets_at": None}})[0]["label"], "WEEK")
